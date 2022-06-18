@@ -4,24 +4,22 @@
 local com = require 'component'
 local unc = require 'unicode'
 local evt = require 'event'
-local sid = require 'sides'
 local trn = com.transposer
 local gpu = com.gpu
+
+local CHEST_SIDE = require 'sides'.top
+local DROP_SIDE = require 'sides'.east
+local TRUST_PLAYERS = {['ProgramCrafter'] = true}
 
 local function active_tolerance(tol1, tol2)
   if tol1 == 'Both 1' or tol1 == 'Down 1' or tol1 == 'Up 1' then return tol1 end
   if tol2 == 'Both 1' or tol2 == 'Down 1' or tol2 == 'Up 1' then return tol2 end
   return tol1
 end
-
 local function analyze(side, slot)
   local slot_info = trn.getStackInSlot(side, slot)
-  if not slot_info then
-    return false, 'empty slot'
-  end
-  if not slot_info.individual then
-    return false, 'not a bee'
-  end
+  if not slot_info then return false, 'empty slot' end
+  if not slot_info.individual then return false, 'not a bee' end
   
   local bee_type = slot_info.label:gmatch('Princess')() or 'Drone'
   local bee_info = slot_info.individual
@@ -107,7 +105,7 @@ end
 
 local tier3 = false
 local function test(side, slot)
-  local test_stack, reason = trn.getStackInSlot(sid.top, 1)
+  local test_stack, reason = trn.getStackInSlot(side, 1)
   if not test_stack and reason == 'no inventory' then
     error 'Add 7e506b5d-2ccb-4ac4-a249-5624925b0c67 to region members'
   end
@@ -119,7 +117,7 @@ local function test(side, slot)
   tier3 = color_depth == 8
 end
 
-test(sid.top, 1)
+test(CHEST_SIDE, 1)
 
 gpu.setBackground(0xCCCCCC)
 gpu.setForeground(0x000000)
@@ -166,7 +164,7 @@ local function draw_table()  -- no need to draw header, as it's not updated
   gpu.setForeground(0x000000)
   
   local x, y, z = 1, 2, 0
-  for _, bee_data in ipairs(analyze_all_bees(sid.top)) do
+  for _, bee_data in ipairs(analyze_all_bees(CHEST_SIDE)) do
     if bee_data[1] then
       if colours[bee_data[2]] then
         gpu.setForeground(colours[bee_data[2]])
@@ -219,7 +217,7 @@ draw_table()
 
 while true do
   local _, _, x, y, btn, user = evt.pull 'touch'
-  if user == 'ProgramCrafter' then
+  if TRUST_PLAYERS[user] then
     x = x // 1
     y = y // 1
     if y == 1 or y == 26 then
@@ -239,7 +237,7 @@ while true do
       local slot = slot_associations[key]
       
       if slot then
-        trn.transferItem(sid.top, sid.east, 1, slot, 1)
+        trn.transferItem(CHEST_SIDE, DROP_SIDE, 1, slot, 1)
         slot_associations[key] = nil
         draw_table()
       end

@@ -71,84 +71,121 @@ local function analyze(side, slot)
          night_active, rain_active, cave_active, effects, bee_type
 end
 
+local tier3 = false
 local function test(side, slot)
   local test_stack, reason = trn.getStackInSlot(sid.top, 1)
   if not test_stack then
     if reason == 'no inventory' then
-      error('Add 7e506b5d-2ccb-4ac4-a249-5624925b0c67 to region members')
+      error 'Add 7e506b5d-2ccb-4ac4-a249-5624925b0c67 to region members'
     end
   end
+  
+  local color_depth = gpu.getDepth()
+  if color_depth == 1 then
+    error 'This program cannot be run on tier1 terminal'
+  end
+  tier3 = color_depth == 8
 end
 
 test(sid.top, 1)
 
-gpu.setBackground(8, true) -- light grey
+gpu.setBackground(0xCCCCCC)
 gpu.setForeground(0x000000)
-gpu.set(1, 1, ('|  Вид        Срок  Скорость Т  В Флаги '):rep(2))
+
+if tier3 then
+  gpu.set(1, 1, ('|  Вид         Срок Скорость Т  В Флаги '):rep(4))
+  gpu.set(1, 26, ('|  Вид         Срок Скорость Т  В Флаги '):rep(4))
+else
+  gpu.set(1, 1, ('|  Вид         Срок Скорость Т  В Флаги '):rep(2))
+end
 
 --[[
-| Вид         Срок  Скорость Т  В Флаги
-Forest/Modest 20-30 0.3-0.6 |1 |1 ----
+|  Вид         Срок Скорость Т  В Флаги 
+  Fores/Modest 20-30 0.3-0.6 |1 |1 ----
 ]]
 
 local colours = {
-  ['Cultivated'] = 11,
-  ['Common']     = 7,
-  ['Meadows']    = 14,
-  ['Modest']     = 12,
-  ['Forest']     = 9,
-  ['Diligent']   = 10,
-  ['Unweary']    = 13
+  ['Cultivated'] = 0x333399,
+  ['Common']     = 0x333333,
+  ['Meadows']    = 0xFF3333,
+  ['Modest']     = 0x663300,
+  ['Forest']     = 0x336699,
+  ['Diligent']   = 0x9933CC,
+  ['Unweary']    = 0x336600
 }
 
 local slot_associations = {}
 local function draw_table()
   -- no need to draw header, as it's not updated
   
-  gpu.setBackground(4, true) -- yellow
+  if tier3 then
+    gpu.setBackground(0xFFFFAA)
+    gpu.fill(1, 27, 40, 24, ' ')
+    gpu.fill(81, 27, 40, 24, ' ')
+    gpu.fill(41, 2, 40, 24, ' ')
+    gpu.fill(121, 2, 40, 24, ' ')
+    
+    gpu.setBackground(0xFFDDAA)
+    gpu.fill(1, 2, 40, 24, ' ')
+    gpu.fill(81, 2, 40, 24, ' ')
+    gpu.fill(41, 27, 40, 24, ' ')
+    gpu.fill(121, 27, 40, 24, ' ')
+  else
+    gpu.setBackground(0xFFFF33)
+    gpu.fill(41, 2, 40, 24, ' ')
+    
+    gpu.setBackground(0xFFCC33)
+    gpu.fill(1, 2, 40, 24, ' ')
+  end
+  
   gpu.setForeground(0x000000)
-  gpu.fill(41, 2, 40, 24, ' ')
   
-  gpu.setBackground(1, true) -- light orange
-  gpu.fill(1, 2, 40, 24, ' ')
-  
-  local x, y = 1, 2
-  for i = 1, 54 do
+  local x, y, z = 1, 2, 0
+  for i = 1, 125 do
     local bee_data = {analyze(sid.top, i)}
     if bee_data[1] then
       if colours[bee_data[2]] then
-        gpu.setForeground(colours[bee_data[2]], true)
+        gpu.setForeground(colours[bee_data[2]])
       end
       
       local chr = bee_data[14] == 'Princess' and 0x2606 or 0x2605
-      gpu.set(x + 0, y, unc.char(chr) .. bee_data[2]:sub(1, 6))
+      gpu.set(x + 0, y + z, unc.char(chr) .. bee_data[2]:sub(1, 6))
       
       if bee_data[3] ~= bee_data[2] then
         if colours[bee_data[3]] then
-          gpu.setForeground(colours[bee_data[3]], true)
+          gpu.setForeground(colours[bee_data[3]])
         end
-        gpu.set(x + 7, y, '/' .. bee_data[3]:sub(1, 6))
+        gpu.set(x + 7, y + z, '/' .. bee_data[3]:sub(1, 6))
       end
       
       gpu.setForeground(0x000000)
       
-      gpu.set(x + 15, y, tostring(bee_data[4]) .. '-' .. tostring(bee_data[5]))
-      gpu.set(x + 21, y, tostring(bee_data[6]) .. '-' .. tostring(bee_data[7]))
-      gpu.set(x + 29, y, bee_data[8] .. ' ' .. bee_data[9])
-      gpu.set(x + 35, y,
+      gpu.set(x + 15, y + z, tostring(bee_data[4]) .. '-' .. tostring(bee_data[5]))
+      gpu.set(x + 21, y + z, tostring(bee_data[6]) .. '-' .. tostring(bee_data[7]))
+      gpu.set(x + 29, y + z, bee_data[8] .. ' ' .. bee_data[9])
+      gpu.set(x + 35, y + z,
         (bee_data[10] and 'N' or ' ') ..
         (bee_data[11] and 'R' or ' ') ..
         (bee_data[12] and 'C' or ' ') ..
         (bee_data[13] and 'E' or ' '))
       
-      slot_associations[tostring(x) .. ' ' .. tostring(y)] = i
+      slot_associations[tostring(x) .. ' ' .. tostring(y) .. ' ' .. tostring(z)] = i
       
       y = y + 1
       if y > 25 then
         x = x + 40
         y = 2
         
-        gpu.setBackground(4, true)
+        if x > 160 then
+          x = 1
+          z = z + 25
+        end
+        
+        if (x // 40 + z // 25) % 2 == 0 then
+          gpu.setBackground(tier3 and 0xFFDDAA or 0xFFCC33)
+        else
+          gpu.setBackground(tier3 and 0xFFFFAA or 0xFFFF33)
+        end
       end
     end
   end
@@ -162,18 +199,27 @@ draw_table()
 while true do
   local _, _, x, y, btn, user = evt.pull 'touch'
   if user == 'ProgramCrafter' then
-    if y == 1 then
+    x = x // 1
+    y = y // 1
+    if y == 1 or y == 26 then
       -- exitting
       break
     elseif btn == 0 then
       -- giving a bee away
       x = math.floor((x - 1) / 40) * 40 + 1 -- transforming X to 1/41
       
-      local slot = slot_associations[tostring(x) .. ' ' .. tostring(math.floor(y))]
+      local z = 0
+      if y > 25 then
+        y = y - 25
+        z = 25
+      end
+      
+      local key = tostring(x) .. ' ' .. tostring(math.floor(y)) .. tostring(z)
+      local slot = slot_associations[key]
       
       if slot then
         trn.transferItem(sid.top, sid.east, 1, slot, 1)
-        slot_associations[tostring(x) .. ' ' .. tostring(math.floor(y))] = nil
+        slot_associations[key] = nil
         draw_table()
       end
     elseif btn == 1 then

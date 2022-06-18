@@ -5,7 +5,6 @@ local com = require 'component'
 local unc = require 'unicode'
 local evt = require 'event'
 local sid = require 'sides'
-
 local trn = com.transposer
 local gpu = com.gpu
 
@@ -71,13 +70,46 @@ local function analyze(side, slot)
          night_active, rain_active, cave_active, effects, bee_type
 end
 
+local bees_tier = {
+  ['Forest']     = 1,  ['Meadows']   = 1, ['Modest']  = 1, ['Tropical']  = 1,
+  ['Common']     = 2,
+  ['Cultivated'] = 3,
+  ['Diligent']   = 4,  ['Noble']     = 4,
+  ['Unweary']    = 5,  ['Majestic']  = 5
+}
+
+local function analyze_all_bees(side)
+  local bees = {}
+  for slot = 1, trn.getInventorySize(side) do
+    local info = {analyze(side, slot)}
+    if info[1] then bees[#bees + 1] = info end
+  end
+  
+  local function compare(t1, t2)
+    for i = 1, #t1 do
+      if t1[i] < t2[i] then return true elseif t2[i] < t1[i] then return false end
+    end return false
+  end
+  local function bee_comparator(bee1, bee2)
+    local tier11, tier12 = bees_tier[bee1[2]] or 0, bees_tier[bee1[3]] or 0
+    if tier11 < tier12 then tier11, tier12 = tier12, tier11 end
+    local tier21, tier22 = bees_tier[bee2[2]] or 0, bees_tier[bee2[3]] or 0
+    if tier21 < tier22 then tier21, tier22 = tier22, tier21 end
+    return compare(
+      {-tier11,-tier12,bee1[14] and 1 or 0,math.max(bee1[4],bee1[5]),math.max(bee1[6],bee1[7])},
+      {-tier21,-tier22,bee2[14] and 1 or 0,math.max(bee2[4],bee2[5]),math.max(bee2[6],bee2[7])})
+  end
+  
+  table.sort(bees, bee_comparator)
+  
+  return bees
+end
+
 local tier3 = false
 local function test(side, slot)
   local test_stack, reason = trn.getStackInSlot(sid.top, 1)
-  if not test_stack then
-    if reason == 'no inventory' then
-      error 'Add 7e506b5d-2ccb-4ac4-a249-5624925b0c67 to region members'
-    end
+  if not test_stack and reason == 'no inventory' then
+    error 'Add 7e506b5d-2ccb-4ac4-a249-5624925b0c67 to region members'
   end
   
   local color_depth = gpu.getDepth()
@@ -107,24 +139,19 @@ end
 local colours = {
   ['Cultivated'] = 0x333399,
   ['Common']     = 0x333333,
-  ['Meadows']    = 0xFF3333,
-  ['Modest']     = 0x663300,
-  ['Forest']     = 0x336699,
+  ['Meadows']    = 0xFF3333,  ['Modest']     = 0x663300, ['Forest']     = 0x336699,
   ['Diligent']   = 0x9933CC,
   ['Unweary']    = 0x336600
 }
 
 local slot_associations = {}
-local function draw_table()
-  -- no need to draw header, as it's not updated
-  
+local function draw_table()  -- no need to draw header, as it's not updated
   if tier3 then
     gpu.setBackground(0xFFFFAA)
     gpu.fill(1, 27, 40, 24, ' ')
     gpu.fill(81, 27, 40, 24, ' ')
     gpu.fill(41, 2, 40, 24, ' ')
     gpu.fill(121, 2, 40, 24, ' ')
-    
     gpu.setBackground(0xFFDDAA)
     gpu.fill(1, 2, 40, 24, ' ')
     gpu.fill(81, 2, 40, 24, ' ')
@@ -133,16 +160,13 @@ local function draw_table()
   else
     gpu.setBackground(0xFFFF33)
     gpu.fill(41, 2, 40, 24, ' ')
-    
     gpu.setBackground(0xFFCC33)
     gpu.fill(1, 2, 40, 24, ' ')
   end
-  
   gpu.setForeground(0x000000)
   
   local x, y, z = 1, 2, 0
-  for i = 1, 125 do
-    local bee_data = {analyze(sid.top, i)}
+  for _, bee_data in ipairs(analyze_all_bees(sid.top)) do
     if bee_data[1] then
       if colours[bee_data[2]] then
         gpu.setForeground(colours[bee_data[2]])
@@ -157,7 +181,6 @@ local function draw_table()
         end
         gpu.set(x + 7, y + z, '/' .. bee_data[3]:sub(1, 6))
       end
-      
       gpu.setForeground(0x000000)
       
       gpu.set(x + 15, y + z, tostring(bee_data[4]) .. '-' .. tostring(bee_data[5]))
@@ -173,12 +196,10 @@ local function draw_table()
       
       y = y + 1
       if y > 25 then
-        x = x + 40
-        y = 2
+        x = x + 40        y = 2
         
         if x > 160 then
-          x = 1
-          z = z + 25
+          x = 1           z = z + 25
         end
         
         if (x // 40 + z // 25) % 2 == 0 then

@@ -71,11 +71,11 @@ local function analyze(side, slot)
 end
 
 local bees_tier = {
-  ['Forest']     = 1,  ['Meadows']   = 1, ['Modest']  = 1, ['Tropical']  = 1,
-  ['Common']     = 2,
-  ['Cultivated'] = 3,
-  ['Diligent']   = 4,  ['Noble']     = 4,
-  ['Unweary']    = 5,  ['Majestic']  = 5
+  ['Forest']     = 1.1,  ['Meadows']   = 1.2, ['Modest']  = 1.3, ['Tropical']  = 1.4,
+  ['Common']     = 2.1,
+  ['Cultivated'] = 3.1,
+  ['Diligent']   = 4.1,  ['Noble']     = 4.2,
+  ['Unweary']    = 5.1,  ['Majestic']  = 5.2
 }
 
 local function analyze_all_bees(side)

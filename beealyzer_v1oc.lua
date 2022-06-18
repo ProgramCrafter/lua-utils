@@ -82,7 +82,7 @@ local function analyze_all_bees(side)
   local bees = {}
   for slot = 1, trn.getInventorySize(side) do
     local info = {analyze(side, slot)}
-    if info[1] then bees[#bees + 1] = info end
+    if info[1] then info[15] = slot bees[#bees + 1] = info end
   end
   
   local function compare(t1, t2)
@@ -95,9 +95,9 @@ local function analyze_all_bees(side)
     if tier11 < tier12 then tier11, tier12 = tier12, tier11 end
     local tier21, tier22 = bees_tier[bee2[2]] or 0, bees_tier[bee2[3]] or 0
     if tier21 < tier22 then tier21, tier22 = tier22, tier21 end
-    return compare(
-      {-tier11,-tier12,bee1[14] and 1 or 0,math.max(bee1[4],bee1[5]),math.max(bee1[6],bee1[7])},
-      {-tier21,-tier22,bee2[14] and 1 or 0,math.max(bee2[4],bee2[5]),math.max(bee2[6],bee2[7])})
+    return compare( -- reverse order
+      {tier21,tier22,bee2[14],math.max(bee2[4],bee2[5]),math.max(bee2[6],bee2[7])},
+      {tier11,tier12,bee1[14],math.max(bee1[4],bee1[5]),math.max(bee1[6],bee1[7])})
   end
   
   table.sort(bees, bee_comparator)
@@ -192,7 +192,7 @@ local function draw_table()  -- no need to draw header, as it's not updated
         (bee_data[12] and 'C' or ' ') ..
         (bee_data[13] and 'E' or ' '))
       
-      slot_associations[tostring(x) .. ' ' .. tostring(y) .. ' ' .. tostring(z)] = i
+      slot_associations[tostring(x) .. ' ' .. tostring(y) .. ' ' .. tostring(z)] = bee_data[15]
       
       y = y + 1
       if y > 25 then
@@ -235,7 +235,7 @@ while true do
         z = 25
       end
       
-      local key = tostring(x) .. ' ' .. tostring(math.floor(y)) .. tostring(z)
+      local key = tostring(x) .. ' ' .. tostring(math.floor(y)) .. ' ' .. tostring(z)
       local slot = slot_associations[key]
       
       if slot then

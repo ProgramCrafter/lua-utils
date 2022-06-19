@@ -7,7 +7,7 @@ local evt = require 'event'
 local trn = com.transposer
 local gpu = com.gpu
 
-local CHEST_SIDE = require 'sides'.top
+local CHEST_SIDES = {[require 'sides'.top] = true, [require 'sides'.north] = true}
 local DROP_SIDE = require 'sides'.east
 local TRUST_PLAYERS = {['ProgramCrafter'] = true}
 
@@ -16,8 +16,7 @@ local function active_tolerance(tol1, tol2)
   if tol2 == 'Both 1' or tol2 == 'Down 1' or tol2 == 'Up 1' then return tol2 end
   return tol1
 end
-local function analyze(side, slot)
-  local slot_info = trn.getStackInSlot(side, slot)
+local function analyze(slot_info)
   if not slot_info then return false, 'empty slot' end
   if not slot_info.individual then return false, 'not a bee' end
   
@@ -76,12 +75,12 @@ local bees_tier = {
   ['Unweary']    = 5.1,  ['Majestic']  = 5.2
 }
 
-local function analyze_all_bees(side)
+local function analyze_all_bees(sides)
   local bees = {}
-  for slot = 1, trn.getInventorySize(side) do
-    local info = {analyze(side, slot)}
-    if info[1] then info[15] = slot bees[#bees + 1] = info end
-  end
+  for side in pairs(sides) do for slot, slot_info in pairs(trn.getAllStacks(side).getAll()) do
+    local info = {analyze(slot_info)}
+    if info[1] then info[15] = {side, slot + 1} bees[#bees + 1] = info end
+  end end
   
   local function compare(t1, t2)
     for i = 1, #t1 do
@@ -117,7 +116,7 @@ local function test(side, slot)
   tier3 = color_depth == 8
 end
 
-test(CHEST_SIDE, 1)
+test(next(CHEST_SIDES), 1)
 
 gpu.setBackground(0xCCCCCC)
 gpu.setForeground(0x000000)
@@ -164,7 +163,7 @@ local function draw_table()  -- no need to draw header, as it's not updated
   gpu.setForeground(0x000000)
   
   local x, y, z = 1, 2, 0
-  for _, bee_data in ipairs(analyze_all_bees(CHEST_SIDE)) do
+  for _, bee_data in ipairs(analyze_all_bees(CHEST_SIDES)) do
     if bee_data[1] then
       if colours[bee_data[2]] then
         gpu.setForeground(colours[bee_data[2]])
@@ -237,7 +236,7 @@ while true do
       local slot = slot_associations[key]
       
       if slot then
-        trn.transferItem(CHEST_SIDE, DROP_SIDE, 1, slot, 1)
+        trn.transferItem(slot[1], DROP_SIDE, 1, slot[2], 1)
         slot_associations[key] = nil
         draw_table()
       end

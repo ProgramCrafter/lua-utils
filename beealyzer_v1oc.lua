@@ -17,40 +17,27 @@ local function active_tolerance(tol1, tol2)
   return tol1
 end
 local function analyze(slot_info)
-  if not slot_info then return false, 'empty slot' end
-  if not slot_info.individual then return false, 'not a bee' end
-  
+  if not slot_info then            return false, 'empty slot'    end
+  if not slot_info.individual then return false, 'not a bee'     end
   local bee_type = slot_info.label:gmatch('Princess')() or 'Drone'
   local bee_info = slot_info.individual
-  
-  if not bee_info.isAnalyzed then
-    return false, 'not analyzed'
-  end
-  
+  if not bee_info.isAnalyzed then  return false, 'not analyzed'  end
   local spec1 = bee_info.active.species
   local spec2 = bee_info.inactive.species
   local lifespan1 = math.floor(bee_info.active.lifespan)
   local lifespan2 = math.floor(bee_info.inactive.lifespan)
   local speed1 = math.floor(10 * bee_info.active.speed + 0.1) / 10
   local speed2 = math.floor(10 * bee_info.inactive.speed + 0.1) / 10
-  
-  if lifespan1 > lifespan2 then
-    lifespan1, lifespan2 = lifespan2, lifespan1
-  end
-  if speed1 > speed2 then
-    speed1, speed2 = speed2, speed1
-  end
-  
-  local temp = active_tolerance(
-    bee_info.active.temperatureTolerance,
-    bee_info.inactive.temperatureTolerance)
+  if lifespan1 > lifespan2 then  lifespan1, lifespan2 = lifespan2, lifespan1  end
+  if speed1 > speed2 then        speed1, speed2 = speed2, speed1              end
+  local temp = active_tolerance(bee_info.active.temperatureTolerance,
+                                bee_info.inactive.temperatureTolerance)
       :gsub('Both ', unc.char(0x2195))
       :gsub('Down ', unc.char(0x2193))
       :gsub('Up ',   unc.char(0x2191))
       :gsub('None',  '--')
-  local humid = active_tolerance(
-    bee_info.active.humidityTolerance,
-    bee_info.inactive.humidityTolerance)
+  local humid = active_tolerance(bee_info.active.humidityTolerance,
+                                 bee_info.inactive.humidityTolerance)
       :gsub('Both ', unc.char(0x2195))
       :gsub('Down ', unc.char(0x2193))
       :gsub('Up ',   unc.char(0x2191))
@@ -59,20 +46,23 @@ local function analyze(slot_info)
   local night_active = bee_info.active.nocturnal
   local rain_active = bee_info.active.tolerantFlyer
   local cave_active = bee_info.active.caveDwelling
-  
   local effects = bee_info.active.effect ~= 'None'
-  
   return true,
          spec1, spec2, lifespan1, lifespan2, speed1, speed2, temp, humid,
          night_active, rain_active, cave_active, effects, bee_type
 end
 
-local bees_tier = {
-  ['Forest']     = 1.1,  ['Meadows']   = 1.2, ['Modest']  = 1.3, ['Tropical']  = 1.4,
-  ['Common']     = 2.1,
-  ['Cultivated'] = 3.1,
-  ['Diligent']   = 4.1,  ['Noble']     = 4.2,
-  ['Unweary']    = 5.1,  ['Majestic']  = 5.2
+local bees_tier = { --[[ignore-spacing-errors(reason="minimizing")]] --[[ignore-line-length(reason="minimizing")]]
+ ['Forest']     =0.1,['Meadows'] =0.2,['Modest']    =0.3,['Tropical']=0.4,['Valiant'] =0.5,['Steadfast']=0.6,['Ended']=0.7,['Wintry']=0.8,['Marshy']=0.9,['Monastic']=0.0,
+ ['Common']     =1.1,['Heroic']  =1.2,['Leporine']  =1.3,['Merry']   =1.4,['Tipsy']   =1.5,
+ ['Cultivated'] =2.1,                               
+ ['Diligent']   =3.1,['Noble']   =3.2,['Sinister']  =3.3,
+ ['Unweary']    =4.1,['Majestic']=4.2,['Fiendish']  =4.3,['Frugal']  =4.4,['Rural']   =4.5,['Tricky']   =4.6,['Miry'] =4.7,
+ ['Industrious']=5.1,['Imperial']=5.2,['Demonic']   =5.3,['Austere'] =5.4,['Farmerly']=5.5,['Boggy']    =5.6,
+ ['Exotic']     =6.1,['Icy']     =6.2,['Vindictive']=6.3,['Agrarian']=6.4,['Secluded']=6.5,
+ ['Edenic']     =7.1,['Glacial'] =7.2,['Vengeful']  =7.3,['Hermitic']=7.4,['Scummy']  =7.5,
+ ['Spectral']   =8.1,['Avenging']=8.2,
+ ['Phantasmal'] =9.1,
 }
 
 local function analyze_all_bees(sides)
@@ -98,7 +88,7 @@ local function analyze_all_bees(sides)
   end
   
   table.sort(bees, bee_comparator)
-  
+  os.sleep(0)
   return bees
 end
 
@@ -133,12 +123,17 @@ end
   Fores/Modest 20-30 0.3-0.6 |1 |1 ----
 ]]
 
-local colours = {
-  ['Cultivated'] = 0x333399,
-  ['Common']     = 0x333333,
-  ['Meadows']    = 0xFF3333,  ['Modest']     = 0x663300, ['Forest']     = 0x336699,
-  ['Diligent']   = 0x9933CC,
-  ['Unweary']    = 0x336600
+local colours = { --[[ignore-spacing-errors(reason="minimizing")]] --[[ignore-line-length(reason="minimizing")]]
+ ['Forest']     =0x336699,['Meadows'] =0xFF3333,['Modest']    =0x663300,['Tropical']=0x006600,['Valiant'] =0x333399,['Steadfast']=0x9933CC,['Ended']=0x9933CC,['Wintry']=0xCCCCEE,['Marshy']=0x006600,['Monastic']=0x333333,
+ ['Common']     =0x333333,['Heroic']  =0xFF00FF,['Leporine']  =0xFF00FF,['Merry']   =0xFF00FF,['Tipsy']   =0xFF00FF,
+ ['Cultivated'] =0x333399,                               
+ ['Diligent']   =0x9933CC,['Noble']   =0x996633,['Sinister']  =0x333333,
+ ['Unweary']    =0x336600,['Majestic']=0x660000,['Fiendish']  =0x333333,['Frugal']  =0xCCCCEE,['Rural']   =0x999933,['Tricky']   =0x9933CC,['Miry'] =0x336600,
+ ['Industrious']=0xFF00FF,['Imperial']=0xFF00FF,['Demonic']   =0x333333,['Austere'] =0xFF00FF,['Farmerly']=0x996633,['Boggy']    =0x333333,
+ ['Exotic']     =0x006600,['Icy']     =0xCCCCEE,['Vindictive']=0xCCCCEE,['Agrarian']=0xFF00FF,['Secluded']=0x333333,
+ ['Edenic']     =0xFF00FF,['Glacial'] =0xFF00FF,['Vengeful']  =0x999933,['Hermitic']=0xFF00FF,['Scummy']  =0x333399,
+ ['Spectral']   =0x9933CC,['Avenging']=0xFF00FF,
+ ['Phantasmal'] =0xFF3333,
 }
 
 local slot_associations = {}

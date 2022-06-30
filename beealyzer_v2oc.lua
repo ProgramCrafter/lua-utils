@@ -73,8 +73,8 @@ local function analyze_all_bees(sides)
     end return false
   end
   local function bee_comparator(bee1, bee2)
-    return compare({math.min(bees_tier[bee2[2]],bees_tier[bee2[3]]),bee2[14],math.max(bee2[4],bee2[5]),math.max(bee2[6],bee2[7])},
-                   {math.min(bees_tier[bee1[2]],bees_tier[bee1[3]]),bee1[14],math.max(bee1[4],bee1[5]),math.max(bee1[6],bee1[7])})
+    return compare({bee2[14],math.min(bees_tier[bee2[2]],bees_tier[bee2[3]]),math.max(bee2[4],bee2[5]),math.max(bee2[6],bee2[7])},
+                   {bee1[14],math.min(bees_tier[bee1[2]],bees_tier[bee1[3]]),math.max(bee1[4],bee1[5]),math.max(bee1[6],bee1[7])})
   end
   
   local bees = {}

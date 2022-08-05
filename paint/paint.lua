@@ -17,10 +17,10 @@ local com = require 'component'
 local unc = require 'unicode'
 local evt = require 'event'
 
-require'term'.setCursor(1, 25)
+require'term'.setCursor(1, 24)
 
 local gpu = com.gpu
-gpu.setResolution(71, 50)
+gpu.setResolution(71, 25)
 
 local data = {
   {0x2588, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20},

@@ -59,16 +59,33 @@ paths['/home/archive.bin'] = nil
 
 ---------------------------------------------------
 
+local archiving_paths = {}
+for path in pairs(paths) do
+  if path:sub(-1) ~= '/' then
+    io.write('Pack ' .. path .. '?   [empty/y/Y | n/N]: ')
+    local ans = io.read()
+    if ans == nil then io.write('\n') end
+    
+    if ans == nil or ans == '' or ans == 'y' or ans == 'Y' then
+      archiving_paths[path] = ''
+    end
+  else
+    archiving_paths[path] = true
+  end
+end
+
+---------------------------------------------------
+
 local handle = io.open('/home/archive.bin', 'wb')
 
 local paths_count = 0
-for _ in pairs(paths) do
+for _ in pairs(archiving_paths) do
   paths_count = paths_count + 1
 end
 
 handle:write(string.pack('<I4', paths_count))
 
-for file in pairs(paths) do
+for file in pairs(archiving_paths) do
   handle:write(string.pack('<s', file))
   
   if file:sub(-1) ~= '/' then

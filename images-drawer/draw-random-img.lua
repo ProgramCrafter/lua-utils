@@ -7,6 +7,8 @@ local gpu = com.gpu
 local int = com.internet
 
 _G.bit32 = require 'bit32'
+_G.warn = print
+package.loaded['graffiti'] = nil
 local png_available, png_graffiti = pcall(require, 'graffiti')
 if not png_available then
   os.execute('mkdir /usr/lib >/dev/null 2>/dev/null')
@@ -43,6 +45,32 @@ local categories = {'waifu', 'neko', 'shinobu', 'megumin', 'bully', 'cuddle',
 
 -- Config end
 
+local stage = ''
+local stage_start = 0
+
+local n = 0
+local old_pull_signal = cmp.pullSignal
+function cmp.pullSignal(...)
+  n = n + 1
+  if (n & 31) == 0 then
+    local s = stage .. ' | ' .. math.floor((cmp.uptime() - stage_start) * 10) / 10 .. 's'
+    gpu.set(61, 1, s .. (' '):rep(100 - #s))
+  end
+  
+  return old_pull_signal(...)
+end
+
+local function mark_stage(s)
+  if not s then
+    stage = s
+    cmp.pullSignal = old_pull_signal
+    return
+  end
+  
+  stage = s
+  stage_start = cmp.uptime()
+end
+
 local function setForeground(f)
   if gpu.getForeground() ~= f then
     gpu.setForeground(f)
@@ -72,20 +100,22 @@ local function exact_readable(stream)
       
       local result = ''
       while #result < n do
-        result = result .. stream.read(n - #result)
-        gpu.set(40, 25, tostring(#result) .. '/' .. tostring(n) .. '     ')
-        os.sleep(0.05)
+        local chunk = assert(stream.read(n - #result))
+        result = result .. chunk
+        
+        if #chunk >= 1024 then os.sleep(0) end
       end
       return result
     end,
     read_between = function(n, m)
-      n = n or 1
+      m = math.max(n, m)
       
       local result = ''
       while #result < n do
-        result = result .. stream.read(m - #result)
-        -- gpu.set(40, 25, tostring(#result) .. '/' .. tostring(math.floor(n)) .. '/' .. tostring(m) .. '     ')
-        os.sleep(0)
+        local chunk = assert(stream.read(m - #result))
+        result = result .. chunk
+        
+        if #chunk >= 2048 then os.sleep(0) end
       end
       return result
     end,
@@ -172,12 +202,21 @@ end
 
 -- png (graffiti) by Zer0Galaxy
 local function png(img, content_length, window)
-  local name = '/tmp/' .. tostring(math.random(100000000, 999999999)) .. '.png'
-  local handle = io.open(name, 'wb')
-  handle:write(img.read(content_length))
-  handle:close()
+  -- local name = '/tmp/' .. tostring(math.random(100000000, 999999999)) .. '.png'
+  local name = '/home/25082022.736.png'
+  if img then
+    mark_stage 'Downloading image'
+    
+    local handle = io.open(name, 'wb')
+    handle:write(img:read(content_length))
+    handle:close()
+  end
   
-  png_graffiti.draw(name, window.x, window.y, window.w, window.h)
+  mark_stage 'Drawing image'
+  png_graffiti.draw(name, window.x, window.y * 2 - 1, window.w, window.h * 2)
+  
+  mark_stage(nil)
+  evt.pull 'touch'
 end
 
 -- gif by Xytabich
@@ -310,18 +349,29 @@ end
 local result = r.read():gsub('%s', '')
 local url = result:sub(9, -3)
 ]]
-local url = 'https://i.waifu.pics/SWMEyvi.gif'
-print(url)
+
+local url = 'https://i.imgur.com/HCZRGQn.png'
+-- local url = 'https://i.waifu.pics/anKsYF2.png'
+-- local url = 'https://i.waifu.pics/oRYkwh4.png'
+-- local url = 'https://imgs.xkcd.com/comics/types_2x.png'
+
+gpu.set(1, 1, url)
+require 'term'.setCursor(1, 2)
 
 -- Checking that given image type can be processed
 
 local ext = url:sub(-3)
 
-local handler = ({['bmp'] = bmp24, ['png'] = png, ['jpg'] = jpg, ['gif'] = gif})[ext]
+local handler = ({['bmp'] = bmp24, ['png'] = png, ['jpg'] = jpg,
+                  ['gif'] = gif,   ['peg'] = jpg})[ext]
 assert(handler, 'No handler found for this image type')
 
 -- Downloading image
 
+local headers = {['Content-Length'] = {'0', n=1}}
+local _
+
+-- [[
 local img = int.request(url, nil, {
   ['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0'
 })
@@ -331,7 +381,12 @@ while true do
   assert(not reason, reason)
 end
 
-local _, _, headers = img.response()
-handler(seekable(exact_readable(img)),
-        tonumber(headers['Content-Length'][1]),
-        {x = 1, y = 3, w = 160, h = 50 - 2})
+_, _, headers = img.response()
+-- ]]
+
+pcall(function()
+  handler(img and seekable(exact_readable(img)),
+          tonumber(headers['Content-Length'][1]),
+          {x = 1, y = 3, w = 160, h = 50 - 2})
+end)
+mark_stage(nil)

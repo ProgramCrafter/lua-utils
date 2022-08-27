@@ -52,7 +52,7 @@ local n = 0
 local old_pull_signal = cmp.pullSignal
 function cmp.pullSignal(...)
   n = n + 1
-  if (n & 31) == 0 then
+  if n % 4 == 0 then
     local s = stage .. ' | ' .. math.floor((cmp.uptime() - stage_start) * 10) / 10 .. 's'
     gpu.set(61, 1, s .. (' '):rep(100 - #s))
   end
@@ -69,6 +69,9 @@ local function mark_stage(s)
   
   stage = s
   stage_start = cmp.uptime()
+  
+  s = s .. ' | 0s'
+  gpu.set(61, 1, s .. (' '):rep(100 - #s))
 end
 
 local function setForeground(f)
@@ -240,33 +243,29 @@ local function gif(img, content_length, window)
     return get_pixel
   end
   
-  -- img = io.open('/home/test.gif', 'rb')
-  
   local colors = {}
   
-  -- gpu.setBackground(0x333333)
-  -- gpu.fill(window.x, window.y, window.w, window.h, ' ')
-  -- gpu.setBackground(0)
   
-  local stt = cmp.uptime()
+  mark_stage('Requesting GIF frame')
   
   for info, frame in gif_lib.images(img) do
-    require 'term'.setCursor(1, 40)
+    mark_stage('Downscaling GIF frame')
     
     colors = info.colors or frame.colors or colors
     
     os.sleep(0.05) -- freeing memory
-    gpu.set(100, 1, 'Free ' .. math.floor(cmp.freeMemory() * 100 / 1024) / 100 .. ' KB  ')
-    gpu.set(120, 1, cmp.totalMemory() / 1024 .. ' KB  ')
     
     local pixels = unpalette(colors, frame.pixels, frame.width, frame.height)
-    gpu.set(60, 1, #frame.pixels .. 'px  ')
     
+    return pixels, frame.width, frame.height
+    
+    --[[
     while frame.height * 5 / 6 > window.h * 2 or frame.width * 5 / 6 > window.w do
       pixels = linear_downscale(pixels, frame)
-      print('Downscaled to', frame.width, frame.height)
       os.sleep(0.05)
     end
+    
+    mark_stage('Drawing GIF frame')
     
     for x = 1, math.min(frame.width, window.w - frame.x) do
       for y = 1, math.min(frame.height, window.h * 2 - frame.y), 2 do
@@ -277,12 +276,14 @@ local function gif(img, content_length, window)
       end
     end
     
-    gpu.setBackground(0)
-    gpu.setForeground(0xFFFFFF)
-    gpu.set(90, 1, math.floor((cmp.uptime() - stt) * 100) / 100 .. 's    ')
+    setBackground(0)
+    setForeground(0xFFFFFF)
     
     break
+    ]]
   end
+  
+  mark_stage(nil)
   
   img:close()
   -- ]==]
@@ -290,32 +291,17 @@ end
 
 -- jpg by MeXaN1cK
 local function jpg(img, content_length, window)
-  --[===[
-  local name = --[['/tmp/' ..]] tostring(math.random(100000000, 999999999)) .. '.jpg'
-  local handle = io.open(name, 'wb')
-  print(handle:write(img.read(content_length)))
-  if handle.flush then handle:flush() print(116) end
-  handle:close()
-  ]===]
-  local name = '775251537.0.jpg'
-  
-  
-  local vgpu = {
-    ['set'] = function(i, j, k)
-      if i > window.w or j > window.h then return end
-      gpu.set(window.x + i, window.y + j, k)
-    end,
-    ['setBackground'] = gpu.setBackground,
-    ['setForeground'] = gpu.setForeground,
-    ['setResolution'] = function() end
-  }
-  local vcom = {
-    ['gpu'] = vgpu
-  }
-  local vrequire = function(s)
-    if s == 'component' then return vcom end
-    return require(s)
+  local name = '/home/775251537.0.jpg'
+  -- local name = --[['/tmp/' ..]] tostring(math.random(100000000, 999999999)) .. '.jpg'
+  if img then
+    mark_stage 'Downloading image'
+    
+    local handle = io.open(name, 'wb')
+    handle:write(img:read(content_length))
+    handle:close()
   end
+  
+  mark_stage 'Preparing venv'
   
   local v_G = {}
   for k, v in pairs(_G) do
@@ -323,7 +309,13 @@ local function jpg(img, content_length, window)
   end
   v_G._ENV = v_G
   v_G._G = v_G
-  v_G.require = vrequire
+  
+  setmetatable(v_G, {
+    __newindex = function(self, k, v)
+      print('Warning: write to global env', k, v)
+      rawset(v_G, k, v)
+    end
+  })
   
   local jpg_handle = io.open '/usr/bin/JPGDraw.lua'
   local code = jpg_handle:read '*a'
@@ -331,7 +323,77 @@ local function jpg(img, content_length, window)
   
   local f, reason = load(code, 'jpg', 't', v_G)
   assert(f, reason)
-  f(name)
+  
+  mark_stage 'Loading image'
+  return f(name)
+end
+
+local function draw(get_pixel, frame, window)
+  assert(frame.w * frame.h > 0, 'empty frame')
+  
+  mark_stage('Drawing image')
+  
+  io.write(window.w, '\t', window.h, '\t', frame.w, '\t', frame.h)
+  local scale = math.min(window.w / frame.w, window.h / frame.h * 2)
+  window.w = math.floor(frame.w * scale)
+  window.h = math.floor(frame.h * scale / 2)
+  print('->', scale, window.w, window.h)
+  
+  local function to_rgb(px)
+    return px >> 16, (px >> 8) & 255, px & 255
+  end
+  local function from_rgb(r, g, b)
+    return (r << 16) + (g << 8) + b
+  end
+  
+  local function mix(lt, rt, lb, rb, x, y)
+    x = x % 1    y = y % 1
+    return math.floor(
+      lt * (1-x) * (1-y)    +    rt * x * (1-y)    +
+      lb * (1-x) * y        +    rb * x * y
+    )
+  end
+  local function mix_rgb(px_lt, px_rt, px_lb, px_rb, x, y)
+    local r_lt, g_lt, b_lt = to_rgb(px_lt or 0xFF00FF)
+    local r_rt, g_rt, b_rt = to_rgb(px_rt or 0xFF00FF)
+    local r_lb, g_lb, b_lb = to_rgb(px_lb or 0xFF00FF)
+    local r_rb, g_rb, b_rb = to_rgb(px_rb or 0xFF00FF)
+    
+    return from_rgb(
+      mix(r_lt, r_rt, r_lb, r_rb, x, y),
+      mix(g_lt, g_rt, g_lb, g_rb, x, y),
+      mix(b_lt, b_rt, b_lb, b_rb, x, y)
+    )
+  end
+  
+  local function interpolate(small_x, small_y)
+    local big_x = math.floor(small_x / scale)
+    local big_y = math.floor(small_y / scale)
+    
+    return get_pixel(big_x, big_y) or 0xFF00FF
+    --[[
+    return mix_rgb(
+      get_pixel(big_x, big_y),      get_pixel(big_x + 1, big_y),
+      get_pixel(big_x, big_y + 1),  get_pixel(big_x + 1, big_y + 1),
+      
+      small_x * scale - big_x,      small_y * scale - big_y
+    )
+    ]]
+  end
+  
+  for x = 1, window.w do
+    for y = 1, window.h, 2 do
+      local tc = interpolate(x, y)
+      local bc = interpolate(x, y + 1)
+      
+      set_halfpixel(window.x + x - 1, window.y + (y // 2), tc, bc)
+    end
+  end
+  
+  setBackground(0)
+  setForeground(0xFFFFFF)
+  
+  mark_stage(nil)
 end
 
 --[[
@@ -350,7 +412,10 @@ local result = r.read():gsub('%s', '')
 local url = result:sub(9, -3)
 ]]
 
-local url = 'https://i.imgur.com/HCZRGQn.png'
+local url = 'https://cdn.catboys.com/images/image_180.jpg'
+-- local url = 'https://cdn.catboys.com/images/image_171.jpg'  -- unsupported compression
+-- local url = 'https://i.waifu.pics/X9GqUZr.gif'
+-- local url = 'https://i.imgur.com/HCZRGQn.png'
 -- local url = 'https://i.waifu.pics/anKsYF2.png'
 -- local url = 'https://i.waifu.pics/oRYkwh4.png'
 -- local url = 'https://imgs.xkcd.com/comics/types_2x.png'
@@ -360,7 +425,7 @@ require 'term'.setCursor(1, 2)
 
 -- Checking that given image type can be processed
 
-local ext = url:sub(-3)
+local ext = url:sub(-3):lower()
 
 local handler = ({['bmp'] = bmp24, ['png'] = png, ['jpg'] = jpg,
                   ['gif'] = gif,   ['peg'] = jpg})[ext]
@@ -384,9 +449,21 @@ end
 _, _, headers = img.response()
 -- ]]
 
-pcall(function()
-  handler(img and seekable(exact_readable(img)),
-          tonumber(headers['Content-Length'][1]),
-          {x = 1, y = 3, w = 160, h = 50 - 2})
-end)
+local result, reason = xpcall(function()
+  local window = {x = 1, y = 4, w = 160}
+  window.h = 51 - window.y
+  
+  local get_pixel, w, h = handler(img and seekable(exact_readable(img)),
+                                  tonumber(headers['Content-Length'][1]),
+                                  window)
+  if get_pixel and w and h then
+    os.sleep(0.05)
+    draw(get_pixel, {w = w, h = h}, window)
+  end
+end, debug.traceback)
 mark_stage(nil)
+
+if not result then
+  io.stderr:write(reason)
+  io.stderr:write '\n'
+end

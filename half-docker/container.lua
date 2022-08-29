@@ -33,7 +33,9 @@ local shl = require 'shell'
 
 local cwd = '/home/'
 
-local openos = '/mnt/b66'
+local openos = '/' -- please, point to the newest version of OpenOS
+-- local openos = '/mnt/b66'
+
 local handle = io.open('archive.bin', 'rb')
 
 local files = {}
@@ -96,7 +98,9 @@ function custom_fs.exists(path)
   
   local handle = custom_fs.open(path, 'r')
   if handle then handle:close() return true end
-  return false
+  
+  -- testing dirs
+  return dirs[fs.canonical(path .. '/')] or fs.exists(openos .. fs.canonical(path .. '/'))
 end
 function custom_fs.size(path)
   path = fs.canonical(path)  -- removing dangerous ..
@@ -111,15 +115,43 @@ function custom_fs.size(path)
   end
 end
 function custom_fs.isDirectory(path)
-  return dirs[fs.canonical(path)] or fs.exists(openos .. fs.canonical(path))
+  return dirs[fs.canonical(path)] or fs.isDirectory(openos .. fs.canonical(path))
 end
 function custom_fs.lastModified() return 0 end
-function custom_fs.list() return nil, 'listing elements not supported' end
+function custom_fs.list(base_path)
+  local t, i = {}, 0
+  
+  base_path = fs.canonical(base_path)
+  if base_path:sub(-1) ~= '/' then    base_path = base_path .. '/'    end
+  
+  local n = #base_path
+  for path in pairs(files) do
+    if #path > n and path:sub(1, n) == base_path and not path:sub(n + 1, -2):find('/') then
+      t[#t + 1] = path:sub(n + 1)
+    end
+  end
+  
+  for path in fs.list(openos .. base_path) do    t[#t + 1] = path    end
+  return    function()  i = i + 1  return t[i]  end
+end
 function custom_fs.makeDirectory() return nil, 'making directories not supported' end
 function custom_fs.remove() return nil, 'removing files not supported' end
 function custom_fs.rename() return nil, 'renaming files not supported' end
 function custom_fs.copy() return nil, 'copying files not supported' end
 function custom_fs.open(path, mode)
+  if path == '/dev/null' then
+    assert(mode == 'w' or mode == 'wb' or mode == 'wt', '/dev/null only supports writing')
+    return {
+      read = error,  seek = error,  close = function() end,  write = function() return true end
+    }
+  end
+  if path == '/dev/full' then
+    assert(mode == 'w' or mode == 'wb' or mode == 'wt', '/dev/full only supports writing')
+    return {
+      read = error,  seek = error,  close = function() end,  write = function() return false, 'no space available' end
+    }
+  end
+  
   assert(not mode or mode == 'r' or mode == 'rb', 'unsupported open type: ' .. tostring(mode))
   
   path = fs.canonical(path)  -- removing dangerous ..
@@ -167,6 +199,7 @@ function custom_fs.open(path, mode)
     return io.open(openos .. path)
   end
 end
+function custom_fs.realPath(path) return custom_fs.canonical(path) end
 
 --------------------------------------------------------------------------------
 
@@ -249,10 +282,10 @@ end
 --------------------------------------------------------------------------------
 
 function _io_open(path, mode)
-  local resolved_path = env.require("shell").resolve(path)
-  local stream, result = env.require("filesystem").open(resolved_path, mode)
+  local resolved_path = env.require('shell').resolve(path)
+  local stream, result = env.require('filesystem').open(resolved_path, mode)
   if stream then
-    return env.require("buffer").new(mode, stream)
+    return env.require('buffer').new(mode, stream)
   else
     return nil, result
   end
@@ -277,8 +310,18 @@ env.package.loaded.package = env.package
 env.package.loaded.filesystem = custom_fs
 env.package.loading = loading
 env.package.delay = package_delay
+
 env.io = copy(_G.io)
 env.io.open = _io_open
+env.io.stdin = env.io.input()
+env.io.stdout = env.io.output()
+env.io.stderr = env.io.error()
+
+-- Forwarding some libraries into container.
+
+-- env.require('tty').isAvailable = require('tty').isAvailable
+env.package.loaded.process = require('process')
+env.package.loaded.tty = require('tty')
 
 env._G = env
 env._ENV = env

@@ -53,8 +53,9 @@ local old_pull_signal = cmp.pullSignal
 function cmp.pullSignal(...)
   n = n + 1
   if n % 4 == 0 then
-    local s = stage .. ' | ' .. math.floor((cmp.uptime() - stage_start) * 10) / 10 .. 's'
-    gpu.set(61, 1, s .. (' '):rep(100 - #s))
+    local s = stage .. ' | ' .. math.floor((cmp.uptime() - stage_start) * 10) / 10 .. 's | '
+           .. math.floor((cmp.uptime() - stage_start) / n * 100) / 100 .. 's/yield'
+    gpu.set(61, 1, ' ' .. s .. (' '):rep(99 - #s))
   end
   
   return old_pull_signal(...)
@@ -69,9 +70,10 @@ local function mark_stage(s)
   
   stage = s
   stage_start = cmp.uptime()
+  n = 0
   
-  s = s .. ' | 0s'
-  gpu.set(61, 1, s .. (' '):rep(100 - #s))
+  s = s .. ' | 0s | ?s/yield'
+  gpu.set(61, 1, ' ' .. s .. (' '):rep(99 - #s))
 end
 
 local function setForeground(f)
@@ -157,50 +159,66 @@ end
 
 -- bmp24 by ov3rwrite
 local function bmp24(img, content_length, window)
-  local res = content_length - 54  -- count of image bytes not in header
+  mark_stage 'Downloading header'
   
-  if img:read(2) ~= "BM" then error("input file is not .bmp") end
-  img:read(16)
-  local w = string.unpack(">B", img:read(1))
-  img:read(3)
-  local h = string.unpack(">B", img:read(1))
-  img:read(31)
+  if img:read(2) ~= 'BM' then error('input file is not .bmp') end
+  img:read(4) -- file size
+  img:read(4) -- reserved
+  local offset = string.unpack('<I4', img:read(4)) -- pixels offset
   
-  local extrabytes = (res - w*h*3) / h -- extra bytes in end of each pixels row
+  local version = string.unpack('<I4', img:read(4))
+  local res = content_length - version - 14 -- count of image bytes not in header
+  
+  local w, h
+  local bpp = 3
+  if version == 12 then
+    w, h = string.unpack('<I2I2', img:read(4))
+  elseif version == 40 or version == 108 or version == 124 then
+    w, h = string.unpack('<I4I4', img:read(8))
+    img:read(2)
+    
+    bpp = string.unpack('<I2', img:read(2)) // 8
+    assert(bpp == 3 or bpp == 4)
+  else
+    error('Unknown version')
+  end
+  
+  img:read(offset - img:seek()) -- seeking to pixels data
+  
+  local extrabytes = (res - w*h*bpp) // h -- extra bytes in end of each pixels row
   local rgb_t = {}
+  
+  local px_data = ''
   local px_t = {}
   
-  local upt = cmp.uptime()
-  for i = 1, res - extrabytes*h do
-    local byte_to_int = string.unpack(">B", img:read(1))
-    table.insert(rgb_t, 1, byte_to_int)
-    if i % (w*3) == 0 then -- end of data row
+  mark_stage 'Downloading image'
+  
+  for i = 1, w * h * bpp do
+    local byte_to_int = img:read(1):byte()
+    table.insert(rgb_t, byte_to_int)
+    if i % (w*bpp) == 0 and i ~= w * h * bpp then -- end of data row
       img:read(extrabytes)
     end
-    if #rgb_t == 3 then
-      table.insert(px_t, 1, rgb_t[1] * 65536 + rgb_t[2] * 256 + rgb_t[3])
-      rgb_t={}
-    end
-    if i % 20 == 0 and cmp.uptime() >= upt + 4 then
-      os.sleep(0)
-      upt = cmp.uptime()
+    if #rgb_t == bpp then
+      table.insert(px_t, string.char(rgb_t[1], rgb_t[2], rgb_t[3]))
+      rgb_t = {}
+      
+      if #px_t >= 262144 then
+        px_data = px_data .. table.concat(px_t, '')
+        px_t = {}
+        
+        os.sleep(0)
+      end
     end
   end
   
-  gpu.fill(window.x, window.y, window.w, window.h, ' ')
-  w = math.min(w, window.w)
-  h = math.min(h, window.h)
+  px_data = px_data .. table.concat(px_t, '')
+  px_t = {}
   
-  local l = 1
-  for k = 1, math.ceil(h/2) do
-    for j = 1, w do
-      gpu.setForeground(px_t[l])
-      gpu.setBackground(px_t[l + w])
-      gpu.set(window.x + w - j + 1, window.y + k, '▀')
-      l = l + 1
-    end
-    l = l + w
-  end
+  return function(x, y)
+    return string.unpack('<I3', px_data:sub(((h - y) * w + x) * 3 + 1,
+                                            ((h - y) * w + x) * 3 + 3))
+  end, w, h
 end
 
 -- png (graffiti) by Zer0Galaxy
@@ -226,7 +244,7 @@ end
 local function gif(img, content_length, window)
   local function unpalette(palette, s, w, h)
     local function get_pixel(x, y)
-      return palette[s:byte((y - 1) * w + x)] or 0xFF00FF
+      return palette[s:byte((y - 1) * w + x)]
     end
     
     return get_pixel
@@ -256,7 +274,7 @@ local function gif(img, content_length, window)
     os.sleep(0.05) -- freeing memory
     
     local pixels = unpalette(colors, frame.pixels, frame.width, frame.height)
-    
+    print(#frame.pixels, frame.width * frame.height)
     return pixels, frame.width, frame.height
     
     --[[
@@ -354,10 +372,10 @@ local function draw(get_pixel, frame, window)
     )
   end
   local function mix_rgb(px_lt, px_rt, px_lb, px_rb, x, y)
-    local r_lt, g_lt, b_lt = to_rgb(px_lt or 0xFF00FF)
-    local r_rt, g_rt, b_rt = to_rgb(px_rt or 0xFF00FF)
-    local r_lb, g_lb, b_lb = to_rgb(px_lb or 0xFF00FF)
-    local r_rb, g_rb, b_rb = to_rgb(px_rb or 0xFF00FF)
+    local r_lt, g_lt, b_lt = to_rgb(px_lt or 0x0000FF)
+    local r_rt, g_rt, b_rt = to_rgb(px_rt or 0x0000FF)
+    local r_lb, g_lb, b_lb = to_rgb(px_lb or 0x0000FF)
+    local r_rb, g_rb, b_rb = to_rgb(px_rb or 0x0000FF)
     
     return from_rgb(
       mix(r_lt, r_rt, r_lb, r_rb, x, y),
@@ -370,23 +388,20 @@ local function draw(get_pixel, frame, window)
     local big_x = math.floor(small_x / scale)
     local big_y = math.floor(small_y / scale)
     
-    return get_pixel(big_x, big_y) or 0xFF00FF
-    --[[
     return mix_rgb(
       get_pixel(big_x, big_y),      get_pixel(big_x + 1, big_y),
       get_pixel(big_x, big_y + 1),  get_pixel(big_x + 1, big_y + 1),
       
-      small_x * scale - big_x,      small_y * scale - big_y
+      small_x / scale - big_x,      small_y / scale - big_y
     )
-    ]]
   end
   
   for x = 1, window.w do
-    for y = 1, window.h, 2 do
-      local tc = interpolate(x, y)
-      local bc = interpolate(x, y + 1)
+    for y = 1, window.h do
+      local tc = interpolate(x, y * 2 - 1)
+      local bc = interpolate(x, y * 2)
       
-      set_halfpixel(window.x + x - 1, window.y + (y // 2), tc, bc)
+      set_halfpixel(window.x + x - 1, window.y + y - 1, bc, tc)
     end
   end
   
@@ -412,13 +427,34 @@ local result = r.read():gsub('%s', '')
 local url = result:sub(9, -3)
 ]]
 
-local url = 'https://cdn.catboys.com/images/image_180.jpg'
+
+-- local url = 'https://i.waifu.pics/159db32.GIF'              -- good
+-- local url = 'https://i.waifu.pics/AVlki2S.GIF'              -- good
+-- local url = 'https://i.waifu.pics/SWMEyvi.gif'              -- good except last rows
+-----------------------------------------------------------------------------------------
+-- local url = 'https://i.imgur.com/HCZRGQn.png'               -- good
+-- local url = 'https://i.waifu.pics/anKsYF2.png'              -- good
+-----------------------------------------------------------------------------------------
+-- local url = 'https://i.waifu.pics/XiWZkIk.jpg'              -- good
+-- local url = 'https://i.waifu.pics/29D-Qw4.jpg'              -- good
+-- local url = 'https://computercraft.ru/uploads/monthly_2022_06/image.jpeg.7619e77d57d1bb5def79f1194de95883.jpeg'              -- good
+-- local url = 'https://i.waifu.pics/03cOINa.jpg'              -- good
+-- local url = 'https://cdn.catboys.com/images/image_180.jpg'  -- good
+-----------------------------------------------------------------------------------------
+local url = 'https://raw.githubusercontent.com/py-sdl/py-sdl2/master/examples/resources/hello.bmp'
+
+
+-- local url = 'https://i.waifu.pics/X9GqUZr.gif'              -- incorrect parsing
+-----------------------------------------------------------------------------------------
+-- local url = 'https://i.waifu.pics/w2H3m~Q.png'              -- OOM
+-- local url = 'https://i.waifu.pics/oRYkwh4.png'              -- OOM
+-- local url = 'https://imgs.xkcd.com/comics/types_2x.png'     -- unsupported color type
+-----------------------------------------------------------------------------------------
+-- local url = 'https://i.waifu.pics/sIdZDtn.jpg'              -- OOM
 -- local url = 'https://cdn.catboys.com/images/image_171.jpg'  -- unsupported compression
--- local url = 'https://i.waifu.pics/X9GqUZr.gif'
--- local url = 'https://i.imgur.com/HCZRGQn.png'
--- local url = 'https://i.waifu.pics/anKsYF2.png'
--- local url = 'https://i.waifu.pics/oRYkwh4.png'
--- local url = 'https://imgs.xkcd.com/comics/types_2x.png'
+-- local url = 'https://i.waifu.pics/DiSEPI_.jpg'              -- unsupported compression
+-----------------------------------------------------------------------------------------
+
 
 gpu.set(1, 1, url)
 require 'term'.setCursor(1, 2)
